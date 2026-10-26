@@ -77,12 +77,13 @@
                     </div>
                 
                     <div class="controls">
-                        <button id="runBtn" class="primary">▶ Run / Build trace</button>
-                        <button id="firstBtn" disabled>|◀ First</button>
-                        <button id="prevBtn" disabled>◀ Previous</button>
-                        <button id="nextBtn" disabled>Next ▶</button>
-                        <button id="lastBtn" disabled>Last ▶|</button>
-                        <button id="playBtn" disabled>▶ Autoplay</button>
+                        <button id="runBtn" class="primary" title="Run / Build trace (Ctrl+R)">▶ Run / Build trace</button>
+                        <button id="firstBtn" disabled title="Go to first step (Ctrl+P)">|◀ First</button>
+                        <button id="prevBtn" disabled title="Go to previous step (P)">◀ Previous</button>
+                        <button id="nextBtn" disabled title="Go to next step (N)">Next ▶</button>
+                        <button id="lastBtn" disabled title="Go to last step (Ctrl+N)">Last ▶|</button>
+                        <button id="playBtn" disabled title="Start or pause autoplay (F5)">▶ Autoplay</button>
+
                         <label class="hint">Speed<select id="speed">
                             <option value="slow">Slow</option>
                             <option value="fast">Fast</option>

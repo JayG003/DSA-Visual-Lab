@@ -612,8 +612,44 @@ function runProgram(source,onlyLoop=null){
         return start;
     }
 
-    function parseBlock(start,end,loopFilter=null){
-        let i=start;
+   function parseBlock(start, end, loopFilter = null) {
+        let i = start;
+
+        const existingVars = new Set(env.vars.keys());
+        const existingArrays = new Set(env.arrays.keys());
+        const existingTypes = new Set(env.types.keys());
+
+        function finishScope() {
+            let removed = false;
+
+            for (const name of [...env.vars.keys()]) {
+                if (!existingVars.has(name)) {
+                    env.vars.delete(name);
+                    removed = true;
+                }
+            }
+
+            for (const name of [...env.arrays.keys()]) {
+                if (!existingArrays.has(name)) {
+                    env.arrays.delete(name);
+                    removed = true;
+                }
+            }
+
+            for (const name of [...env.types.keys()]) {
+                if (!existingTypes.has(name)) {
+                    env.types.delete(name);
+                    removed = true;
+                }
+            }
+
+            // Record the updated memory after local variables disappear.
+            if (removed) {
+                const line = lines[Math.max(start, end - 1)]?.line || 1;
+                snap(line, 'Block scope ended; local variables removed.');
+            }
+        }
+        
         while(i<end){
             let x=lines[i],s=x.text;
             if(!s||s==='{'||s==='}') {
@@ -801,18 +837,31 @@ function runProgram(source,onlyLoop=null){
     }
 
     // Locate main body; otherwise execute declarations/statements as written.
-    let start=0;
-    const mainIdx=lines.findIndex(x=>/^int\s+main\s*\(/.test(x.text));
-    if(mainIdx>=0){
-        let brace=mainIdx;
-        while(brace<lines.length&&lines[brace].text!=='{')
-            brace++;
+    let start = 0;
+    let end = lines.length;
 
-        if(brace<lines.length)
-            start=brace+1
+    const mainIdx = lines.findIndex(line => /^int\s+main\s*\(/.test(line.text) || /^void\s+main\s*\(/.test(line.text));
+
+    if (mainIdx >= 0) {
+        let brace = mainIdx;
+
+        while (brace < lines.length && lines[brace].text !== '{') {
+            brace++;
         }
 
-    parseBlock(start,lines.length,onlyLoop);return {steps,env}
+        if (brace < lines.length) {
+            start = brace + 1;
+
+            const closingBrace = findClose(brace);
+
+            if (closingBrace > brace) {
+                end = closingBrace;
+            }
+        }
+    }
+
+    parseBlock(start, end, onlyLoop);
+    return { steps, env };
 }
 
 function stopAll(){
@@ -943,17 +992,38 @@ $('nextBtn').addEventListener('click',()=>{
 
 $('lastBtn').addEventListener('click',()=>step(trace.length-1));
 
-$('inputForm').addEventListener('submit',e=>{
+$('inputForm').addEventListener('submit', e => {
     e.preventDefault();
-    const v=$('stdinInput').value.trim();
-    if(!v||!trace[pos]?.inputRequired)
-        return;stdinValues.push(v);
-    
-    $('terminal').textContent+='\\n'+v;
-    $('stdinInput').value='';
-    buildTrace(false);
-    if(trace.length)
-        step(trace.length-1)
+
+    const input = $('stdinInput').value.trim();
+
+    if (!input || !trace[pos]?.inputRequired) {
+        return;
+    }
+
+    stdinValues.push(input);
+    $('stdinInput').value = '';
+
+    const result = buildTrace(false);
+
+    if (!result || !trace.length) {
+        return;
+    }
+
+    let inputStep = -1;
+
+    for (let i = trace.length - 1; i >= 0; i--) {
+        if (trace[i].terminalInput === input) {
+            inputStep = i;
+            break;
+        }
+    }
+
+    if (inputStep >= 0) {
+        step(inputStep);
+    } else {
+        step(0);
+    }
 });
 
 $('playBtn').addEventListener('click',()=>{
@@ -985,146 +1055,177 @@ $('playBtn').addEventListener('click',()=>{
         }
         
         step(pos+1)
-    },$('speed').value==='fast'?250:900)});
+    },$('speed').value==='fast'?250:900)
+});
     
-    document.addEventListener('keydown',e=>{
-        if(e.ctrlKey||e.metaKey||e.altKey)
-            return;
-            
-        const tag=(e.target?.tagName||'').toLowerCase();
-        if(tag==='textarea'||tag==='input'||tag==='select'||e.target?.isContentEditable)
-            return;
-        
-        if(e.key.toLowerCase()==='n'){
-            e.preventDefault();
-            if(trace[pos]?.inputRequired)
-                $('stdinInput').focus();
-            else
-                step(pos+1)
-        }
-        if(e.key.toLowerCase()==='p'){
-            e.preventDefault();
-            step(pos-1)
-        }
-    });
-    
-    function renderLoops(){
-        const list=$('loopList');
-        $('loopCount').textContent=`${loops.length} loop${loops.length===1?'':'s'} found`;
-        if(!loops.length){
-            list.innerHTML='<div class="empty"><div><strong>No loops detected</strong>Enter a for, while, or do-while loop in the editor.</div></div>';
-            $('loopDetail').className='empty';
-            $('loopDetail').innerHTML='<div><strong>Select a loop</strong>The selected loop and its detected variables will be shown here.</div>';
-            return
-        }
-        
-        list.innerHTML=loops.map((l,i)=>`<button class="loop-choice ${i===selectedLoop?'active':''}" data-loop="${i}">Loop ${i+1} · ${l.type} (line ${l.line})\n${esc(l.header)}</button>`).join('');
-        list.querySelectorAll('[data-loop]').forEach(b=>b.addEventListener('click',()=>{
-            selectedLoop=Number(b.dataset.loop);
-            renderLoops()
-        }));
-        const l=loops[Math.min(selectedLoop,loops.length-1)];
+document.addEventListener('keydown', e => {
+    const tag = (e.target?.tagName || '').toLowerCase();
+    const editing = tag === 'textarea' || tag === 'input' || tag === 'select' || e.target?.isContentEditable;
 
-        $('loopDetail').className='tracebox';
-
-        $('loopDetail').innerHTML=`<h3>${l.type.toUpperCase()} LOOP · LINE ${l.line}</h3><div class="trace-msg">${esc(l.header)}</div><pre class="trace-code">${esc(l.source)}</pre><p class="hint">Loop body: lines ${l.line}–${l.endLine}. Use Run selected loop to build its execution trace.</p>`
+    if (editing) {
+        return;
     }
 
-    $('loopRun').addEventListener('click',()=>{
-        if(!loops.length)
-            return;
-        
-        const l=loops[selectedLoop];
-        const result=buildTrace(l);
-        if(result){
-            loopTrace=trace.map(x=>({...x}));loopPos=0;renderLoopStep()
+    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        $('runBtn').click();
+        return;
+    }
+
+    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        $('firstBtn').click();
+        return;
+    }
+
+    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        $('lastBtn').click();
+        return;
+    }
+
+    if (e.key === 'F5') {
+        e.preventDefault();
+        $('playBtn').click();
+        return;
+    }
+
+    if (!e.ctrlKey && !e.metaKey && !e.altKey &&
+        e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+
+        if (trace[pos]?.inputRequired) {
+            $('stdinInput').focus();
+        } else {
+            $('nextBtn').click();
         }
-    });
+        return;
+    }
 
-    function renderLoopStep() {
-        if (!loopTrace.length) return;
+    if (!e.ctrlKey && !e.metaKey && !e.altKey &&
+        e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        $('prevBtn').click();
+    }
+});
 
-        const s = loopTrace[loopPos];
-        const preview = parsePreview(code.value);
+function renderLoops(){
+    const list=$('loopList');
+    $('loopCount').textContent=`${loops.length} loop${loops.length===1?'':'s'} found`;
+    if(!loops.length){
+        list.innerHTML='<div class="empty"><div><strong>No loops detected</strong>Enter a for, while, or do-while loop in the editor.</div></div>';
+        $('loopDetail').className='empty';
+        $('loopDetail').innerHTML='<div><strong>Select a loop</strong>The selected loop and its detected variables will be shown here.</div>';
+        return
+    }
+    
+    list.innerHTML=loops.map((l,i)=>`<button class="loop-choice ${i===selectedLoop?'active':''}" data-loop="${i}">Loop ${i+1} · ${l.type} (line ${l.line})\n${esc(l.header)}</button>`).join('');
+    list.querySelectorAll('[data-loop]').forEach(b=>b.addEventListener('click',()=>{
+        selectedLoop=Number(b.dataset.loop);
+        renderLoops()
+    }));
+    const l=loops[Math.min(selectedLoop,loops.length-1)];
 
-        // Build variable boxes using the current execution snapshot.
-        const vars = new Map(
-            Object.entries(s.vars).map(([name, value]) => [
-                name,
-                {
-                    type: preview.vars.get(name)?.type || 'int',
-                    value,
-                    kind: 'scalar'
-                }
-            ])
-        );
+    $('loopDetail').className='tracebox';
 
-        // Use the current array values from the execution snapshot.
-        const arrays = s.arrays.map(array => ({
-            name: array.name,
-            type: preview.arrays.find(item => item.name === array.name)?.type || 'int',
-            values: array.values
-        }));
+    $('loopDetail').innerHTML=`<h3>${l.type.toUpperCase()} LOOP · LINE ${l.line}</h3><div class="trace-msg">${esc(l.header)}</div><pre class="trace-code">${esc(l.source)}</pre><p class="hint">Loop body: lines ${l.line}–${l.endLine}. Use Run selected loop to build its execution trace.</p>`
+}
 
-        // Resolve array references using the current variable values.
-        const env = {
-            vars: new Map(Object.entries(s.vars)),
-            arrays: new Map(arrays.map(array => [array.name, array.values]))
-        };
+$('loopRun').addEventListener('click',()=>{
+    if(!loops.length)
+        return;
+    
+    const l=loops[selectedLoop];
+    const result=buildTrace(l);
+    if(result){
+        loopTrace=trace.map(x=>({...x}));loopPos=0;renderLoopStep()
+    }
+});
 
-        const refs = preview.refs.map(ref => {
-            let index = null;
+function renderLoopStep() {
+    if (!loopTrace.length) return;
 
-            try {
-                const resolved = Number(evalExpr(ref.expr, env));
-                if (Number.isFinite(resolved)) index = resolved;
-            } catch {
-                // Keep the reference unresolved if its expression is unsupported.
+    const s = loopTrace[loopPos];
+    const preview = parsePreview(code.value);
+
+    // Build variable boxes using the current execution snapshot.
+    const vars = new Map(
+        Object.entries(s.vars).map(([name, value]) => [
+            name,
+            {
+                type: preview.vars.get(name)?.type || 'int',
+                value,
+                kind: 'scalar'
             }
+        ])
+    );
 
-            return { ...ref, index };
-        });
+    // Use the current array values from the execution snapshot.
+    const arrays = s.arrays.map(array => ({
+        name: array.name,
+        type: preview.arrays.find(item => item.name === array.name)?.type || 'int',
+        values: array.values
+    }));
 
-        // Render the same memory representation used on the main page.
-        const memory = { vars, arrays, refs };
+    // Resolve array references using the current variable values.
+    const env = {
+        vars: new Map(Object.entries(s.vars)),
+        arrays: new Map(arrays.map(array => [array.name, array.values]))
+    };
 
-        $('loopMemory').className = 'pane db loop-memory';
-        $('loopMemory').style.marginTop = '12px';
-        $('loopMemory').innerHTML = `
-            <div class="panehead">
-                <h2>Database / Memory</h2>
-                <span class="count">
-                    ${vars.size} variables · ${arrays.length} arrays
-                </span>
-            </div>
-            ${renderMemory(memory, {
-                indices: s.indices,
-                arrayName: s.arrayName
-            })}
-        `;
+    const refs = preview.refs.map(ref => {
+        let index = null;
 
-        // Keep the current operation and source line visible.
-        $('loopTrace').innerHTML = `
-            <h3>Step ${loopPos + 1} / ${loopTrace.length}</h3>
-            <div class="trace-msg">${esc(s.msg)}</div>
-            <div class="trace-code">
-                Source line ${s.line}:
-                ${esc(code.value.split('\n')[s.line - 1] || '')}
-            </div>
-            <div class="status">
-                Variables:
-                ${esc(
-                    Object.entries(s.vars)
-                        .map(([name, value]) => `${name} = ${value}`)
-                        .join(', ')
-                )}
-            </div>
-        `;
+        try {
+            const resolved = Number(evalExpr(ref.expr, env));
+            if (Number.isFinite(resolved)) index = resolved;
+        } catch {
+            // Keep the reference unresolved if its expression is unsupported.
+        }
 
-        $('loopPrev').disabled = loopPos === 0;
-        $('loopNext').disabled = loopPos === loopTrace.length - 1;
-        $('loopPlay').disabled = loopTrace.length < 2;
-    }
+        return { ...ref, index };
+    });
+
+    // Render the same memory representation used on the main page.
+    const memory = { vars, arrays, refs };
+
+    $('loopMemory').className = 'pane db loop-memory';
+    $('loopMemory').style.marginTop = '12px';
+    $('loopMemory').innerHTML = `
+        <div class="panehead">
+            <h2>Database / Memory</h2>
+            <span class="count">
+                ${vars.size} variables · ${arrays.length} arrays
+            </span>
+        </div>
+        ${renderMemory(memory, {
+            indices: s.indices,
+            arrayName: s.arrayName
+        })}
+    `;
+
+    // Keep the current operation and source line visible.
+    $('loopTrace').innerHTML = `
+        <h3>Step ${loopPos + 1} / ${loopTrace.length}</h3>
+        <div class="trace-msg">${esc(s.msg)}</div>
+        <div class="trace-code">
+            Source line ${s.line}:
+            ${esc(code.value.split('\n')[s.line - 1] || '')}
+        </div>
+        <div class="status">
+            Variables:
+            ${esc(
+                Object.entries(s.vars)
+                    .map(([name, value]) => `${name} = ${value}`)
+                    .join(', ')
+            )}
+        </div>
+    `;
+
+    $('loopPrev').disabled = loopPos === 0;
+    $('loopNext').disabled = loopPos === loopTrace.length - 1;
+    $('loopPlay').disabled = loopTrace.length < 2;
+}
 
 $('loopPrev').addEventListener('click',()=>{
     loopPos=Math.max(0,loopPos-1);
