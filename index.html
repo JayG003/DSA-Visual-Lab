@@ -1,29 +1,177 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DSA Visual Lab</title>
-<link rel="stylesheet" href="css/style.css"></head>
-<body data-theme="dark">
-<header><div><h1>DSA Visual Lab</h1><div class="subtitle">Write C code, step through execution, and inspect simulated memory</div></div><button id="themeToggle" type="button">☀ Light theme</button></header>
-<nav class="toolbar" aria-label="Tools"><button class="active" data-page="program">Whole Program</button><button data-page="loops">Loops</button><span class="spacer"></span><button id="saveBtn" title="Download current code (Ctrl+S)">Save code</button><button id="clearBtn">Clear</button></nav>
-<main>
-<section id="programPage" class="page active">
-<div class="workspace">
-<section class="pane"><div class="panehead"><h2>Code editor</h2><span class="hint">Live memory preview</span></div>
-<div class="editor"><div id="gutter" class="gutter"><div>1</div></div><textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" placeholder="Enter C code here..."></textarea></div>
-<div class="editor-foot"><span class="hint">Tab = indent · Enter = auto-indent · Ctrl+S = save file</span><span id="parseError" class="error"></span></div></section>
-<section class="pane db"><div class="panehead"><h2>Database / Memory</h2><span id="itemCount" class="count">No data yet</span></div><div id="database" class="empty"><div><strong>Memory is empty</strong>Enter C code on the left.<br>Detected variables and arrays will appear here.</div></div></section>
-</div>
-<section id="iterate" class="pane iterate"><div class="panehead"><h2>Iterate</h2><span id="stepLabel" class="count">Not running</span></div>
-<div class="controls"><button id="runBtn" class="primary">▶ Run / Build trace</button><button id="firstBtn" disabled>|◀ First</button><button id="prevBtn" disabled>◀ Previous</button><button id="nextBtn" disabled>Next ▶</button><button id="lastBtn" disabled>Last ▶|</button><button id="playBtn" disabled>▶ Autoplay</button><label class="hint">Speed <select id="speed"><option value="slow">Slow</option><option value="fast">Fast</option></select></label></div>
-<div class="traceinfo"><div class="tracebox terminal-box"><h3>Ubuntu-like terminal</h3><div id="terminal" class="terminal" aria-live="polite">dsa@visual-lab:~$ ./program
-Waiting to run your program…</div></div><div class="tracebox operation-box"><h3>Current operation</h3><div id="traceMsg" class="trace-msg">Press Run to simulate supported C statements.</div><div id="traceCode" class="trace-code"></div><form id="inputForm" class="input-form"><label for="stdinInput" id="inputPrompt">Program input (for scanf)</label><div class="input-row"><input id="stdinInput" autocomplete="off" placeholder="Enter input values, e.g. 5 2 9" disabled><button id="submitInput" type="submit" disabled>Send input</button></div><div class="hint">Separate multiple values with spaces, like a terminal.</div></form></div></div><div class="tracebox history-box"><h3>Execution history</h3><div id="history" class="history status">No execution history yet.</div></div>
-</section>
-</section>
-<section id="loopsPage" class="page">
-<div class="loop-layout"><section class="pane"><div class="panehead"><h2>Loop explorer</h2><span id="loopCount" class="count">0 loops found</span></div><p class="hint">Choose a loop found in your code to focus on its condition, counter variables, and array references.</p><div id="loopList" class="loop-list"><div class="empty"><div><strong>No loops detected</strong>Enter a for, while, or do-while loop in the editor.</div></div></div></section>
-<section class="pane loop-preview"><div class="panehead"><h2>Loop and memory relation</h2><span class="badge">Focused view</span></div><div id="loopDetail" class="empty"><div><strong>Select a loop</strong>The selected loop and its detected variables will be shown here.</div></div><div id="loopMemory"></div><div class="controls" style="margin-top:12px"><button id="loopRun" class="primary">Run selected loop</button><button id="loopPrev" disabled>Previous</button><button id="loopNext" disabled>Next</button><button id="loopPlay" disabled>▶ Autoplay</button></div><div id="loopTrace" class="tracebox" style="margin-top:12px">Choose a loop to build a focused trace.</div></section></div>
-</section>
-</main>
-<script src="js/app.js" defer></script></body></html>
+    
+    <head>
+        <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>DSA Visual Lab</title>
+        <link rel="stylesheet" href="css/style.css">
+    </head>
+
+    <body data-theme="dark">
+
+        <header>
+            <div>
+                <h1>DSA Visual Lab</h1>
+                <div class="subtitle">Write C code, step through execution, and inspect simulated memory</div>
+            </div>
+
+            <button id="themeToggle" type="button">☀ Light theme</button>
+        </header>
+
+        <nav class="toolbar" aria-label="Tools">
+            <button class="active" data-page="program">Whole Program</button>
+            <button data-page="loops">Loops</button>
+            <span class="spacer"></span>
+            <button id="saveBtn" title="Download current code (Ctrl+S)">Save code</button>
+            <button id="clearBtn">Clear</button>
+        </nav>
+
+        <main>
+            <section id="programPage" class="page active">
+                <div class="workspace">
+                    <section class="pane">
+                        <div class="panehead">
+                            <h2>Code editor</h2>
+                            <span class="hint">Live memory preview</span>
+                        </div>
+                    
+                        <div class="editor">
+                            <div id="gutter" class="gutter">
+                                <div>1</div>
+                            </div>
+                            <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" placeholder="Enter C code here...">
+                            </textarea>
+                        </div>
+                    
+                        <div class="editor-foot">
+                            <span class="hint">Tab = indent · Enter = auto-indent · Ctrl+S = save file</span>
+                            <span id="parseError" class="error"></span>
+                        </div>
+                    </section>
+
+                    <section class="pane db">
+                        <div class="panehead"><h2>Database / Memory</h2>
+                            <span id="itemCount" class="count">No data yet</span>
+                        </div>
+                        
+                        <div id="database" class="empty">
+                            <div>
+                                <strong>Memory is empty</strong>
+                                Enter C code on the left.<br>
+                                Detected variables and arrays will appear here.
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <section id="iterate" class="pane iterate">
+                    <div class="panehead">
+                        <h2>Iterate</h2>
+                        <span id="stepLabel" class="count">Not running</span>
+                    </div>
+                
+                    <div class="controls">
+                        <button id="runBtn" class="primary">▶ Run / Build trace</button>
+                        <button id="firstBtn" disabled>|◀ First</button>
+                        <button id="prevBtn" disabled>◀ Previous</button>
+                        <button id="nextBtn" disabled>Next ▶</button>
+                        <button id="lastBtn" disabled>Last ▶|</button>
+                        <button id="playBtn" disabled>▶ Autoplay</button>
+                        <label class="hint">Speed<select id="speed">
+                            <option value="slow">Slow</option>
+                            <option value="fast">Fast</option>
+                        </select></label>
+                    </div>
+                
+                    <div class="traceinfo">
+                        <div class="tracebox terminal-box">
+                            <h3>Ubuntu-like terminal</h3>
+                            <div id="terminal" class="terminal" aria-live="polite">
+                                dsa@visual-lab:~$ ./program
+                                Waiting to run your program…
+                            </div>
+                        </div>
+                        
+                        <div class="tracebox operation-box">
+                            <h3>Current operation</h3>
+                            <div id="traceMsg" class="trace-msg">
+                                Press Run to simulate supported C statements.
+                            </div>
+                            
+                            <div id="traceCode" class="trace-code">
+
+                            </div>
+                            <form id="inputForm" class="input-form">
+                                <label for="stdinInput" id="inputPrompt">Program input (for scanf)</label>
+                                <div class="input-row">
+                                    <input id="stdinInput" autocomplete="off" placeholder="Enter input values, e.g. 5 2 9" disabled>
+                                    <button id="submitInput" type="submit" disabled>Send input</button>
+                                </div>
+                                
+                                <div class="hint">
+                                    Separate multiple values with spaces, like a terminal.
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <div class="tracebox history-box">
+                        <h3>Execution history</h3>
+                        <div id="history" class="history status">
+                            No execution history yet.
+                        </div>
+                    </div>
+                </section>
+            </section>
+            
+            <section id="loopsPage" class="page">
+                <div class="loop-layout">
+                    <section class="pane">
+                        <div class="panehead">
+                            <h2>Loop explorer</h2>
+                            <span id="loopCount" class="count">0 loops found</span>
+                        </div>
+                        
+                        <p class="hint">Choose a loop found in your code to focus on its condition, counter variables, and array references.</p>
+                        
+                        <div id="loopList" class="loop-list">
+                            <div class="empty">
+                                <div>
+                                    <strong>No loops detected</strong>
+                                    Enter a for, while, or do-while loop in the editor.
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="pane loop-preview">
+                        <div class="panehead">
+                            <h2>Loop and memory relation</h2>
+                            <span class="badge">Focused view</span>
+                        </div>
+                        
+                        <div id="loopDetail" class="empty">
+                            <div>
+                                <strong>Select a loop</strong>
+                                The selected loop and its detected variables will be shown here.
+                            </div>
+                        </div>
+                        
+                        <div id="loopMemory"></div>
+                        
+                        <div class="controls" style="margin-top:12px">
+                            <button id="loopRun" class="primary">Run selected loop</button>
+                            <button id="loopPrev" disabled>Previous</button>
+                            <button id="loopNext" disabled>Next</button>
+                            <button id="loopPlay" disabled>▶ Autoplay</button>
+                        </div>
+                        
+                        <div id="loopTrace" class="tracebox" style="margin-top:12px">Choose a loop to build a focused trace.</div>
+                    </section>
+                </div>
+            </section>
+        </main>
+        
+        <script src="js/app.js" defer></script>
+    </body>
+</html>
