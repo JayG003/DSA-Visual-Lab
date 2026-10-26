@@ -70,27 +70,54 @@ code.addEventListener('keydown',e=>{
         renderPreview();
         return;
     }
-    if(e.key==='Backspace'&&s===en){
-        e.preventDefault();
-        const pair=({')':'(',']':'[','}':'{','"':'"',"'":"'"});
-        const next=code.value[s],prev=code.value[s-1];
-        if(pair[next]&&prev===pair[next]){e.preventDefault();
-            code.setRangeText('',s-1,s+1,'end');renderPreview();
-            return
+
+    if (e.key === 'Backspace' && s === en) {
+        const pair = {
+            ')': '(',
+            ']': '[',
+            '}': '{',
+            '"': '"',
+            "'": "'"
+        };
+
+        const next = code.value[s];
+        const prev = code.value[s - 1];
+
+        if (pair[next] && prev === pair[next]) {
+            e.preventDefault();
+            code.setRangeText('', s - 1, s + 1, 'end');
+            renderPreview();
+            return;
         }
     }
+
     if(e.key==='Enter'){
         const s0=code.selectionStart,en0=code.selectionEnd,before=code.value.slice(0,s0),line=before.split('\n').pop(),indent=(line.match(/^\s*/)||[''])[0],after=code.value.slice(s0);
         e.preventDefault();
-        if(/\{\s*$/.test(line)&&/^\s*}/.test(after)){
-            const bodyIndent=indent+'    ';code.setRangeText('\n'+bodyIndent+'\n'+indent,s0,en0,'end');
-            code.selectionStart=code.selectionEnd=s0+1+bodyIndent.length;
-            renderPreview();r
-            eturn
+        if (/\{\s*$/.test(line) && /^\s*}/.test(after)) {
+            const bodyIndent = indent + '    ';
+
+            code.setRangeText(
+                '\n' + bodyIndent + '\n' + indent,
+                s0,
+                en0,
+                'end'
+            );
+
+            code.selectionStart = s0 + 1 + bodyIndent.length;
+            code.selectionEnd = code.selectionStart;
+
+            renderPreview();
+            return;
         }
+
         let base=indent;
-        if(/[\{\[(]\s*$/.test(line))base+='    ';
-        if(/^\s*}/.test(after)&&base.length>=4)base=base.slice(0,base.length-4);
+        if(/[\{\[(]\s*$/.test(line))
+            base+='    ';
+
+        if(/^\s*}/.test(after)&&base.length>=4)
+            base=base.slice(0,base.length-4);
+
         code.setRangeText('\n'+base,s0,en0,'end');
         renderPreview();
         return
@@ -422,18 +449,38 @@ function evalExpr(expr,env){
     return val
 }
 
-function normalizeLines(src){
-    const out=[];
-    
-    stripComments(src).split('\n').forEach((raw,idx)=>{
-        const trimmed=raw.trim();
-        if(!trimmed||trimmed.startsWith('#'))
-            return;
+function normalizeLines(src) {
+    const out = [];
+    let initializerCount = 0;
+    const initializers = new Map();
+    const normalizedSource = stripComments(src).split('\n');
 
-        const chunks=trimmed.replace(/\{/g,'\n{\n').replace(/\}/g,'\n}\n').split('\n').map(x=>x.trim()).filter(Boolean);
-        for(const text of chunks)
-            out.push({text,line:idx+1});
+    normalizedSource.forEach((raw, idx) => {
+        let trimmed = raw.trim();
+
+        if (!trimmed || trimmed.startsWith('#')) {
+            return;
+        }
+
+        trimmed = trimmed.replace(/(\[\s*(?:\d+\s*)?\]\s*=\s*)\{([^{}]*)\}/g,(match) => {
+            const key = `__ARRAY_INITIALIZER_${initializerCount++}__`;
+            initializers.set(key, match);
+            return key;
+        });
+
+        const chunks = trimmed.replace(/\{/g, '\n{\n').replace(/\}/g, '\n}\n').split('\n').map(text => text.trim()).filter(Boolean);
+
+        for (let text of chunks) {
+            for (const [key, original] of initializers) {
+                if (text.includes(key)) {
+                    text = text.replace(key, original);
+                }
+            }
+
+            out.push({text,line: idx + 1});
+        }
     });
+
     return out;
 }
 
@@ -466,15 +513,20 @@ function splitTop(s,sep){
 function runProgram(source,onlyLoop=null){
     const lines=normalizeLines(source),env={vars:new Map(),types:new Map(),arrays:new Map()},steps=[],maxSteps=10000;
     
-    function snap(line,msg,indices=null,arrayName=null,extra={}){
-        const vars=Object.fromEntries(env.vars),arrays=[...env.arrays].map(([name,a])=>({name,values:[...a]}));
-        steps.push({
-            line,msg,vars,arrays,indices,arrayName,...extra
-        });
-        
-        if(steps.length>maxSteps)
-            throw Error('Execution stopped: step limit reached (possible infinite loop).')
+    function snap(line, msg, indices = null, arrayName = null, extra = {}) {
+        if (onlyLoop && (line < onlyLoop.line || line > onlyLoop.endLine)) {
+            return;
         }
+
+        const vars = Object.fromEntries(env.vars);
+        const arrays = [...env.arrays].map(([name, values]) => ({name,values: [...values]}));
+
+        steps.push({line,msg,vars,arrays,indices,arrayName,...extra});
+
+        if (steps.length > maxSteps) {
+            throw Error('Execution stopped: step limit reached (possible infinite loop).');
+        }
+    }
 
     function parseDecl(s,line){
         const m=s.match(/^(char|short|int|long|float|double|bool)\s+(.+);?$/);
@@ -585,12 +637,15 @@ function runProgram(source,onlyLoop=null){
                 }else
                     bodyEnd=bodyStart+1;
     
-                const isTarget=!onlyLoop||onlyLoop.line===x.line;
-                if(isTarget){
-                    if(parts[0]){
-                        if(!parseDecl(parts[0]+';',x.line))assign(parts[0],x.line);
+                const isTarget = !onlyLoop || onlyLoop.line === x.line;
+                if (parts[0]) {
+                    if (!parseDecl(parts[0] + ';', x.line)) {
+                        assign(parts[0], x.line);
                     }
-                    snap(x.line,'For-loop initialization: '+parts[0]);
+                }
+
+                if (isTarget) {
+                    snap(x.line, 'For-loop initialization: ' + parts[0]);
                 }
 
                 let count=0;
